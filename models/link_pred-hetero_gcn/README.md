@@ -1,0 +1,1 @@
+Link prediction model for 'standard' graph convolutional networks that is compatible with heterogeneous graphs.
