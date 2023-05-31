@@ -1,4 +1,13 @@
-# Link prediction adapted from various sources online and joe's code
+######################################################################################
+# README!
+# Link prediction adapted from various sources online and joe's code.
+# This link prediction is adapted to work on heterogenous graphs and make predictions on 
+# one edge type.
+# This code can be adapted to work with different heterogenous graph but we have:
+# - 4 node types
+# - 14 edge types
+# - predictions are made on one edge type: CHEMICALASSOCIATESWITHDISEASE
+######################################################################################
 
 import argparse
 
@@ -65,13 +74,14 @@ def preprocess_edges(graph):
 ######################################################################################
 # SPLIT GRAPH INTO TRAINING AND TESTING SETS
 ######################################################################################
-def train_test_split(graph):
+def train_test_split(G, lp_etype):
     '''
     Make training and testing splits from a graph.
 
     Parameters
     ----------
-    graph : dgl graph you want to split
+    G : dgl graph you want to split
+    lp_etype : edge type we are doing link prediction on
 
     Outputs
     ----------
@@ -84,22 +94,21 @@ def train_test_split(graph):
     train_g = G
     test_g = G
 
-    for et in G.etypes:
-        # return a list with length of number of edges in graph
-        eids = np.arange(G.number_of_edges(etype = et))
+    # return a list with length of number of CD edges in graph
+    eids = np.arange(G.number_of_edges(etype = lp_etype))
 
-        # shuffle the edges 
-        eids = np.random.permutation(eids)
+    # shuffle the CD edges 
+    eids = np.random.permutation(eids)
 
-        # get size of train and test set (10% for test)
-        test_size = int(len(eids) * 0.025)
-        train_size = G.number_of_edges() - test_size
+    # get size of train and test set (10% for test)
+    test_size = int(len(eids) * 0.1)
+    train_size = G.number_of_edges(etype = lp_etype) - test_size
 
-        # get training graph
-        train_g = dgl.remove_edges(train_g, eids[:test_size], etype = et)
+    # get training graph
+    train_g = dgl.remove_edges(train_g, eids[:test_size], etype = lp_etype)
 
-        # get test graph
-        test_g = dgl.remove_edges(test_g, eids[test_size:], etype = et)
+    # get test graph
+    test_g = dgl.remove_edges(test_g, eids[test_size:], etype = lp_etype)
 
     return train_g, test_g
 
@@ -123,7 +132,7 @@ def construct_negative_graph(graph, k, etype):
     '''
 
     utype, _, vtype = etype
-    src, dst = graph.edges(etype=etype)
+    src, dst = graph.edges(etype = etype)
     
     neg_src = src.repeat_interleave(k)
     neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,))
@@ -140,7 +149,7 @@ def construct_negative_graph(graph, k, etype):
 ######################################################################################
 class HeteroRGCNLayer(nn.Module):
     '''
-    RCGN LAYER TO CALCULATE NODE REPRESENTATIONS 
+    RCGN LAYER TO CALCULATE NODE REPRESENTATIONS.
     '''
     def __init__(self, in_size, out_size, etypes):
         super().__init__()
@@ -156,7 +165,7 @@ class HeteroRGCNLayer(nn.Module):
 
     def forward(self, positive_graph, feat_dict):
         '''
-        Calculate node representation and add as feature to nodes
+        Calculate node representation and add as feature to nodes.
 
         Parameters
         ----------
@@ -185,11 +194,11 @@ class HeteroRGCNLayer(nn.Module):
 ######################################################################################
 class HeteroDotProductPredictor(nn.Module):
     '''
-    MAKE SCORE PREDICTION USING DOT PRODUCT
+    MAKE SCORE PREDICTION USING DOT PRODUCT.
     '''
     def forward(self, edge_subgraph, h, etype):
         '''
-        Predict edge score and add as feature to edges
+        Predict edge score and add as feature to edges.
 
         Parameters
         ----------
@@ -205,7 +214,7 @@ class HeteroDotProductPredictor(nn.Module):
         # we might want to do for all edges
         with edge_subgraph.local_scope():
             edge_subgraph.ndata['h'] = h # get the node representation
-            edge_subgraph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype = etype) # update the features of the specified edge with the provide function (in our case the dot product)
+            edge_subgraph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype = etype) # update features of specified edge with provide function 
             edges_scores = edge_subgraph.edges[etype].data['score']
 
             return edges_scores
@@ -215,7 +224,7 @@ class HeteroDotProductPredictor(nn.Module):
 ######################################################################################
 class Model(nn.Module):
     '''
-    THE LINK PREDICTION MODEL
+    THE LINK PREDICTION MODEL.
     '''
     def __init__(self, in_size_dict, hidden_size, out_size, rel_names):
         super().__init__()
@@ -225,7 +234,7 @@ class Model(nn.Module):
 
     def forward(self, positive_graph, negative_graph, x, etype):
         '''
-        Get scores for positive and negative graph
+        Get scores for positive and negative graph.
 
         Parameters
         ----------
@@ -252,7 +261,7 @@ class Model(nn.Module):
 ######################################################################################
 def compute_loss(pos_score, neg_score):
     '''
-     Get scores for positive and negative graph
+     Get scores for positive and negative graph.
 
     Parameters
     ----------
@@ -273,18 +282,31 @@ def compute_loss(pos_score, neg_score):
 # COMPUTE AUC
 ######################################################################################
 def compute_auc(pos_score, neg_score):
+    '''
+    Compute AUC.
+
+    Parameters
+    ----------
+    pos_score : scores for each edge in positive graph (each edge of our edge type of course)
+    neg_score : scores for each edge in negative graph
+
+    Outputs
+    ----------
+    auc : AUC
+    '''
     scores = torch.cat([pos_score, neg_score]).numpy()
     labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).numpy()
 
     auc = sklearn.metrics.roc_auc_score(labels, scores)
+
     return auc
 
 ######################################################################################
 # TRAINING OF MODEL
 ######################################################################################
-def training(device, G, model, train_eid_dict, reverse_edges):
+def training(device, G, model, train_eid_dict, reverse_edges, c_lp_etype):
     '''
-    Train link prediction model
+    Train link prediction model.
 
     Parameters
     ----------
@@ -292,6 +314,7 @@ def training(device, G, model, train_eid_dict, reverse_edges):
     G : graph we want to train on
     model : our model we will use for training
     train_eid_dict : dictionary of edge types and edge IDs
+    c_lp_etype : canonical edge type we are making prediction on
 
     Outputs
     ----------
@@ -356,7 +379,7 @@ def training(device, G, model, train_eid_dict, reverse_edges):
             sm_node_features, sm_node_sizes, sm_edge_input_sizes = preprocess_edges(positive_graph)
 
             # get scores from model
-            pos_score, neg_score = model(positive_graph, negative_graph, sm_node_features, ('chemical', 'chemicalassociateswithdisease', 'disease'))
+            pos_score, neg_score = model(positive_graph, negative_graph, sm_node_features, c_lp_etype)
 
             # compute loss
             loss = compute_loss(pos_score, neg_score)
@@ -377,75 +400,30 @@ def training(device, G, model, train_eid_dict, reverse_edges):
 
     return all_loss
 
-if __name__=="__main__":
-    parser = argparse.ArgumentParser(description = "Train a heterogeneous RGCN on a link prediction task.")
+######################################################################################
+# TESTING OF MODEL
+######################################################################################
+def testing(positive_test_graph, negative_test_graph, c_lp_etype):
+    '''
+    Test link prediction model.
 
-    # give location of graph file
-    parser.add_argument("--graph-file", type=str, default = "/Users/cfparis/Desktop/Romano_Rotation/making_dgl_graph/data/graph.bin",
-                        help = "File location where the DGL heterograph is stored.")
+    Parameters
+    ----------
+    positive_test_graph : positive test graph 
+    negative_test_graph : negative test graph
+    c_lp_etype : canonical edge type we are prediction on
 
-    # give location of edge list
-    parser.add_argument("--edge-file", type = str, default = "/Users/cfparis/Desktop/Romano_Rotation/making_dgl_graph/data/edge_dict.pkl",
-                        help = "File location where the edge list is stored.")
-
-    # not sure what this does
-    parser.set_defaults(validation = True) # not sure what this does
-
-    args = parser.parse_args()
-
-    ######################################################################################
-    # INITIALIZATION OF GRAPH AND MODEL
-    ######################################################################################
-    # choose mode to train in
-    print("Training in cpu mode.")
-    device = torch.device('cpu')
-    
-    print('Loading in graph...')
-    G = dgl.load_graphs(args.graph_file)[0][0]
-    G = G.to("cpu")
-
-    print('Making training and testing graphs...')
-    train_g, test_g = train_test_split(G)
-
-    print('Getting reverse IDs...')
-    with open(args.edge_file, 'rb') as f:
-        reverse_edges = pickle.load(f)
-    
-    print('Preprocessing graph...')
-    node_features, node_sizes, edge_input_sizes = preprocess_edges(train_g)
-
-    # dictionary of edge types and edge IDs
-    train_eid_dict = {etype: train_g.edges(etype = etype, form = 'eid') for etype in train_g.canonical_etypes}
-
-    print('Making model...')
-    model = Model(edge_input_sizes, 20, 5, train_g.etypes) 
-
-    ######################################################################################
-    # TRAIN MODEL 
-    ######################################################################################
-    print("Training...")
-    loss_array = training(device, train_g, model, train_eid_dict, reverse_edges)
-
-    print("Making loss graph...")
-    loss_plt = sns.lineplot(data = loss_array)
-    loss_fig = loss_plt.figure
-    loss_fig.savefig('loss_fig4.png')
-
-    ######################################################################################
-    # TEST MODEL 
-    ######################################################################################
-    # get postive and negative test graphs
-    # we have to specify the edge type here...dataloader does negative graph for all edge types?
-    print("Testing...")
-    positive_test_graph = test_g
-    negative_test_graph = construct_negative_graph(test_g, 5, ('chemical', 'chemicalassociateswithdisease', 'disease'))
-
+    Outputs
+    ----------
+    pos_score : scores on positive edges in test graph
+    neg_score: scores on negative edges in test graph
+    '''
     # preprocess the graph
     sm_node_features, sm_node_sizes, sm_edge_input_sizes = preprocess_edges(positive_test_graph)
 
     # get scores and AUC for test graph
     with torch.no_grad():   
-        pos_score, neg_score = model(positive_test_graph, negative_test_graph, sm_node_features, ('chemical', 'chemicalassociateswithdisease', 'disease'))    
+        pos_score, neg_score = model(positive_test_graph, negative_test_graph, sm_node_features, c_lp_etype)    
     
         # print AUC
         print('Link Prediction AUC on test set:', compute_auc(pos_score, neg_score))
@@ -454,15 +432,34 @@ if __name__=="__main__":
         torch.save(pos_score, 'pos_score.pt')
         torch.save(neg_score, 'neg_score.pt')
 
-    ######################################################################################
-    # PREDICTIONS 
-    ######################################################################################
-    # get the positive scores' mean and SD
-    pos_score_mean = torch.mean(pos_score)
-    pos_score_sd = torch.std(pos_score)
+    return pos_score, neg_score
 
-    # keep only the negative scores above a certain threshold
-    neg_idx = neg_score >= pos_score_mean - pos_score_sd
+######################################################################################
+# PREDICTION USING MODEL
+######################################################################################
+def predict(pos_scores, neg_scores, negative_test_graph):
+    '''
+    Predict new edges.
+
+    Parameters
+    ----------
+    positive_test_graph : positive test graph 
+    negative_test_graph : negative test graph
+
+    Outputs
+    ----------
+    pos_score : scores on positive edges in test graph
+    neg_score: scores on negative edges in test graph
+    '''
+    # we choose which neg_scores to keep based on a threshold made from the pos_scores
+    # make threshold
+    pos_score_mean = torch.mean(pos_scores)
+    pos_score_sd = torch.std(neg_scores)
+
+    threshold = pos_score_mean - pos_score_sd
+
+    # keep only the negative scores above set threshold
+    neg_idx = neg_scores >= threshold
 
     # we find the source and destination nodes for each edge in the negative graph 
     # note that all the edges here are the 'chemicalassociateswithdisease' edges
@@ -481,8 +478,101 @@ if __name__=="__main__":
     dst_nodes_pred = dst_1D[neg_idx]
 
     # save as dataframe
-    data = {'chemical (src)': src_nodes_pred,
-        'disease (dst)': dst_nodes_pred}
+    data = {'src': src_nodes_pred,
+        'dst': dst_nodes_pred, 
+        'pred_score': neg_scores[neg_idx]}
   
-    pred_src_dst_df = pd.DataFrame(data)
-    pred_src_dst_df.to_csv(index=False)
+    prediction_df = pd.DataFrame(data)
+    prediction_df.to_csv(index=False)
+
+    return prediction_df
+
+if __name__=="__main__":
+    ######################################################################################
+    # INITIALIZATION OF ARGUMENTS
+    ######################################################################################
+    parser = argparse.ArgumentParser(description = "Train a heterogeneous RGCN on a link prediction task.")
+
+    # give location of graph file
+    parser.add_argument("--graph-file", type=str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/graph.bin",
+                        help = "File location where the DGL heterograph is stored.")
+
+    # give location of edge list
+    parser.add_argument("--edge-file", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/edge_dict.pkl",
+                        help = "File location where the edge list is stored.")
+    
+    # give edge type you want to make predictions on 
+    parser.add_argument("--edge-type", type = str, default = "chemicalassociateswithdisease",
+                        help = "Edge type to make link predictions on.")
+    
+    parser.add_argument("--cedge-type", type = str, default = ('chemical', 'chemicalassociateswithdisease', 'disease'),
+                        help = "Canonical edge type to make link predictions on.")
+
+    # not sure what this does
+    parser.set_defaults(validation = True) # not sure what this does
+
+    args = parser.parse_args()
+
+    ######################################################################################
+    # INITIALIZATION OF GRAPH AND MODEL
+    ######################################################################################
+    # set edge type for link prediction
+    lp_etype = args.edge_type
+    c_lp_etype = args.cedge_type
+
+    # choose mode to train in
+    print("Training in cpu mode.")
+    device = torch.device('cpu')
+    
+    print('Loading in graph...')
+    G = dgl.load_graphs(args.graph_file)[0][0]
+    G = G.to("cpu")
+
+    print('Making training and testing graphs...')
+    train_g, test_g = train_test_split(G, lp_etype)
+
+    print('Getting reverse IDs...')
+    with open(args.edge_file, 'rb') as f:
+        reverse_edges = pickle.load(f)
+    
+    print('Preprocessing graph...')
+    node_features, node_sizes, edge_input_sizes = preprocess_edges(train_g)
+
+    # dictionary of edge types and edge IDs
+    train_eid_dict = {etype: train_g.edges(etype = etype, form = 'eid') for etype in train_g.canonical_etypes}
+
+    print('Making model...')
+    # not sure which graph to put here? G? train_g?
+    model = Model(edge_input_sizes, 20, 5, train_g.etypes) 
+
+    ######################################################################################
+    # TRAIN MODEL 
+    ######################################################################################
+    print("Training...")
+    loss_array = training(device, train_g, model, train_eid_dict, reverse_edges, c_lp_etype)
+
+    print("Making loss graph...")
+    loss_plt = sns.lineplot(data = loss_array)
+    loss_fig = loss_plt.figure
+    loss_fig.savefig('loss_fig4.png')
+
+    ######################################################################################
+    # TEST MODEL 
+    ######################################################################################
+    print("Testing...")
+    positive_test_graph = test_g
+    negative_test_graph = construct_negative_graph(test_g, 5, c_lp_etype)
+
+    test_pos_score, test_neg_score = testing(positive_test_graph, negative_test_graph, c_lp_etype)
+
+    ######################################################################################
+    # MAKE PREDICTIONS 
+    ######################################################################################
+    print("Making predictions...")
+    # at the end of the day we are going to want to make the predictions on the whole graph 
+    prediction_df = predict(test_pos_score, test_neg_score, negative_test_graph)
+
+    # print a handful of the predicitons
+    df_first_10 = prediction_df.head(10)
+    print(df_first_10)
+
