@@ -115,15 +115,14 @@ def train_test_split(G, lp_etype):
 ######################################################################################
 # MAKE A NEGATIVE GRAPH
 ######################################################################################
-def construct_negative_graph(graph, k, etype): 
+def construct_negative_graph(G, k): 
     '''
     Construct a negative graph for negative sampling in edge prediction.
 
     Parameters
     ----------
-    graph : dgl graph you want to make negative graph for
+    G : dgl graph you want to make negative graph for
     k : number of negative examples to retrieve
-    etype : edge on which negative sampling will be performed
 
     Outputs
     ----------
@@ -131,21 +130,14 @@ def construct_negative_graph(graph, k, etype):
 
     '''
 
-    utype, _, vtype = etype
-    src, dst = graph.edges(etype = etype)
-    
-    neg_src = src.repeat_interleave(k)
-    neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,))
-
     m_neg_graph = dgl.heterograph(
-        {etype: (neg_src, neg_dst)},
-        num_nodes_dict= { ntype: graph.num_nodes(ntype) for ntype in graph.ntypes }
+        {etype: (G.edges(etype = etype)[0].repeat_interleave(k), torch.randint(0, G.num_nodes(etype[2]), (len(G.edges(etype = etype)[0]) * k,))) for etype in G.canonical_etypes}
     )
 
     return m_neg_graph
 
 ######################################################################################
-# GET EDGE SCORES USING RCGN LAYER
+# GET NODE REPRESENTATIONS USING RCGN LAYER
 ######################################################################################
 class HeteroRGCNLayer(nn.Module):
     '''
@@ -374,7 +366,7 @@ def training(device, G, model, train_eid_dict, reverse_edges, c_lp_etype):
 
             # input features
             input_features = blocks[0].srcdata['features']
-
+ 
             # preprocess the graph
             sm_node_features, sm_node_sizes, sm_edge_input_sizes = preprocess_edges(positive_graph)
 
@@ -437,19 +429,21 @@ def testing(positive_test_graph, negative_test_graph, c_lp_etype):
 ######################################################################################
 # PREDICTION USING MODEL
 ######################################################################################
-def predict(pos_scores, neg_scores, negative_test_graph):
+def predict(pos_scores, neg_scores, negative_test_graph,lp_etype):
     '''
     Predict new edges.
 
     Parameters
     ----------
-    positive_test_graph : positive test graph 
+    pos_scores : positive scores
+    neg_scores : negative scores
     negative_test_graph : negative test graph
+    lp_etype : edge we want predictions on 
 
     Outputs
     ----------
-    pos_score : scores on positive edges in test graph
-    neg_score: scores on negative edges in test graph
+    prediction_df : dataframes of src,dst nodes of edges that are predicted to exist
+
     '''
     # we choose which neg_scores to keep based on a threshold made from the pos_scores
     # make threshold
@@ -462,9 +456,8 @@ def predict(pos_scores, neg_scores, negative_test_graph):
     neg_idx = neg_scores >= threshold
 
     # we find the source and destination nodes for each edge in the negative graph 
-    # note that all the edges here are the 'chemicalassociateswithdisease' edges
-    src = negative_test_graph.edges()[0]
-    dst = negative_test_graph.edges()[1]
+    src = negative_test_graph.edges(etype = lp_etype)[0]
+    dst = negative_test_graph.edges(etype = lp_etype)[1]
 
     # need to fix the shapes
     src_1D = torch.empty(src.size(0), 1)
@@ -543,7 +536,7 @@ if __name__=="__main__":
 
     print('Making model...')
     # not sure which graph to put here? G? train_g?
-    model = Model(edge_input_sizes, 20, 5, train_g.etypes) 
+    model = Model(edge_input_sizes, 20, 5, train_g.etypes) # check this
 
     ######################################################################################
     # TRAIN MODEL 
@@ -561,7 +554,7 @@ if __name__=="__main__":
     ######################################################################################
     print("Testing...")
     positive_test_graph = test_g
-    negative_test_graph = construct_negative_graph(test_g, 5, c_lp_etype)
+    negative_test_graph = construct_negative_graph(test_g, 5)
 
     test_pos_score, test_neg_score = testing(positive_test_graph, negative_test_graph, c_lp_etype)
 
@@ -570,7 +563,7 @@ if __name__=="__main__":
     ######################################################################################
     print("Making predictions...")
     # at the end of the day we are going to want to make the predictions on the whole graph 
-    prediction_df = predict(test_pos_score, test_neg_score, negative_test_graph)
+    prediction_df = predict(test_pos_score, test_neg_score, negative_test_graph,lp_etype)
 
     # print a handful of the predicitons
     df_first_10 = prediction_df.head(10)
