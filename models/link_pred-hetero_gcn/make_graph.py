@@ -1,4 +1,4 @@
-## Code to make subgraph in dgl from neo4j csv data
+## Code to dgl graph saved to a graph.bin file from neo4j csv data
 ## file outputs dgl graph, networkx graph, edge dictionary as pkl file
 
 ##################################################################################
@@ -15,6 +15,7 @@ import scipy.sparse
 import ipdb
 from os import path
 import networkx as nx
+import argparse
 
 import pickle as pkl
 
@@ -242,4 +243,17 @@ class DGL_GRAPH(DGLDataset):
     nx.write_edgelist(self.nx_g, "networkx.edgelist") # write as edgelist
 
 if __name__=="__main__":
-  dset = DGL_GRAPH(name = "GNN", file_path = '/Users/cfparis/Desktop/Romano_Rotation/making_dgl_graph/data/')
+  parser = argparse.ArgumentParser(description = "Create DGL graph from Neo4j csv files.")
+
+  # give location of graph file
+  parser.add_argument("--csv-files", type=str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/",
+                      help = "File path where neo4j csv files are stored.")
+
+  # not sure what this does
+  parser.set_defaults(validation = True) # not sure what this does
+
+  args = parser.parse_args()
+
+  file_paths = args.csv_files
+
+  dset = DGL_GRAPH(name = "GNN", file_path = file_paths)

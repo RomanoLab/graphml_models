@@ -1,10 +1,8 @@
-#!/usr/bin/python3
-
 ######################################################################################
 # README!
-# Link prediction adapted from various sources online and joe's code.
-# This link prediction is adapted to work on heterogenous graphs and make predictions on 
-# one edge type.
+# Code to train and test a link prediction on heterogenous graph 
+# adapted from various sources online and joe's code.
+# adapted to work on heterogenous graphs and make predictions on one edge type.
 # This code can be adapted to work with different heterogenous graph but we have:
 # - 4 node types
 # - 14 edge types
@@ -14,6 +12,7 @@
 import argparse
 
 import dgl
+from dgl import save_graphs
 import dgl.function as fn
 import dgl.nn as dglnn
 
@@ -23,6 +22,7 @@ import sklearn.metrics
 import seaborn as sns
 import torch
 import pandas as pd
+from os import path
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -89,9 +89,7 @@ def train_test_split(G, lp_etype):
     ----------
     train_g : training graph 
     test_g : testing graph
-
     '''
-
     # our training and testing graphs start out as the same whole graph but then we slowly take out edges
     train_g = G
     test_g = G
@@ -131,7 +129,7 @@ def construct_negative_graph(G, k):
     m_neg_graph : negative graph 
 
     '''
-
+    # make heterogenous negative graph
     m_neg_graph = dgl.heterograph(
         {etype: (G.edges(etype = etype)[0].repeat_interleave(k), torch.randint(0, G.num_nodes(etype[2]), (len(G.edges(etype = etype)[0]) * k,))) for etype in G.canonical_etypes}
     )
@@ -422,71 +420,17 @@ def testing(positive_test_graph, negative_test_graph, c_lp_etype):
         # print AUC
         print('Link Prediction AUC on test set:', compute_auc(pos_score, neg_score))
 
-        # save tensor 
+        # save scores 
         torch.save(pos_score, 'pos_score.pt')
         torch.save(neg_score, 'neg_score.pt')
 
     return pos_score, neg_score
 
-######################################################################################
-# PREDICTION USING MODEL
-######################################################################################
-def predict(pos_scores, neg_scores, negative_test_graph,lp_etype):
-    '''
-    Predict new edges.
-
-    Parameters
-    ----------
-    pos_scores : positive scores
-    neg_scores : negative scores
-    negative_test_graph : negative test graph
-    lp_etype : edge we want predictions on 
-
-    Outputs
-    ----------
-    prediction_df : dataframes of src,dst nodes of edges that are predicted to exist
-
-    '''
-    # we choose which neg_scores to keep based on a threshold made from the pos_scores
-    # make threshold
-    pos_score_mean = torch.mean(pos_scores)
-    pos_score_sd = torch.std(neg_scores)
-
-    threshold = pos_score_mean - pos_score_sd
-
-    # keep only the negative scores above set threshold
-    neg_idx = neg_scores >= threshold
-
-    # we find the source and destination nodes for each edge in the negative graph 
-    src = negative_test_graph.edges(etype = lp_etype)[0]
-    dst = negative_test_graph.edges(etype = lp_etype)[1]
-
-    # need to fix the shapes
-    src_1D = torch.empty(src.size(0), 1)
-    dst_1D = torch.empty(dst.size(0), 1)
-
-    src_1D[:,0] = src
-    dst_1D[:,0] = dst
-
-    # source and destination nodes of negative edges that are predicted to 'exist'
-    src_nodes_pred = src_1D[neg_idx]
-    dst_nodes_pred = dst_1D[neg_idx]
-
-    # save as dataframe
-    data = {'src': src_nodes_pred,
-        'dst': dst_nodes_pred, 
-        'pred_score': neg_scores[neg_idx]}
-  
-    prediction_df = pd.DataFrame(data)
-    prediction_df.to_csv(index=False)
-
-    return prediction_df
-
 if __name__=="__main__":
     ######################################################################################
     # INITIALIZATION OF ARGUMENTS
     ######################################################################################
-    parser = argparse.ArgumentParser(description = "Train a heterogeneous RGCN on a link prediction task.")
+    parser = argparse.ArgumentParser(description = "Train and test a heterogeneous RGCN on a link prediction task.")
 
     # give location of graph file
     parser.add_argument("--graph-file", type=str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/graph.bin",
@@ -533,7 +477,7 @@ if __name__=="__main__":
     print('Preprocessing graph...')
     node_features, node_sizes, edge_input_sizes = preprocess_edges(train_g)
 
-    # dictionary of edge types and edge IDs
+    # make dictionary of edge types and edge IDs
     train_eid_dict = {etype: train_g.edges(etype = etype, form = 'eid') for etype in train_g.canonical_etypes}
 
     print('Making model...')
@@ -546,11 +490,6 @@ if __name__=="__main__":
     print("Training...")
     loss_array = training(device, train_g, model, train_eid_dict, reverse_edges, c_lp_etype)
 
-    print("Making loss graph...")
-    loss_plt = sns.lineplot(data = loss_array)
-    loss_fig = loss_plt.figure
-    loss_fig.savefig('loss_fig4.png')
-
     ######################################################################################
     # TEST MODEL 
     ######################################################################################
@@ -558,16 +497,8 @@ if __name__=="__main__":
     positive_test_graph = test_g
     negative_test_graph = construct_negative_graph(test_g, 5)
 
+    # save negative graph
+    output_filename = path.join("data", "ngraph.bin")
+    save_graphs(output_filename, negative_test_graph)
+
     test_pos_score, test_neg_score = testing(positive_test_graph, negative_test_graph, c_lp_etype)
-
-    ######################################################################################
-    # MAKE PREDICTIONS 
-    ######################################################################################
-    print("Making predictions...")
-    # at the end of the day we are going to want to make the predictions on the whole graph 
-    prediction_df = predict(test_pos_score, test_neg_score, negative_test_graph,lp_etype)
-
-    # print a handful of the predicitons
-    df_first_10 = prediction_df.head(10)
-    print(df_first_10)
-
