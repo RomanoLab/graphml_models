@@ -47,7 +47,6 @@ def predict(pos_scores, neg_scores, negative_test_graph, lp_etype):
     Outputs
     ----------
     prediction_df : dataframes of src,dst nodes of edges that are predicted to exist
-
     '''
     # we choose which neg_scores to keep based on a threshold made from the pos_scores
     # make threshold
@@ -80,7 +79,6 @@ def predict(pos_scores, neg_scores, negative_test_graph, lp_etype):
         'pred_score': neg_scores[neg_idx]}
   
     prediction_df = pd.DataFrame(data)
-    prediction_df.to_csv(index=False)
 
     return prediction_df
 
@@ -105,6 +103,10 @@ if __name__=="__main__":
     # give edge type you want to make predictions on 
     parser.add_argument("--edge-type", type = str, default = "chemicalassociateswithdisease",
                         help = "Edge type to make link predictions on.")
+    
+    # give location where to save csv
+    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/edges_w_scores.csv",
+                        help = "File path where to save the csv files.")
 
     # not sure what this does
     parser.set_defaults(validation = True) # not sure what this does
@@ -129,7 +131,7 @@ if __name__=="__main__":
     prediction_df = predict(pos_scores, neg_scores, negative_test_graph, lp_etype)
 
     # save 
-    prediction_df.to_csv(index=False)
+    prediction_df.to_csv(args.file_path, index=False)
 
     # print a handful of the predicitons
     df_first_10 = prediction_df.head(10)

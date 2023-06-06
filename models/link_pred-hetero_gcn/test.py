@@ -15,10 +15,14 @@ import dgl.nn as dglnn
 import pickle
 import numpy as np
 import sklearn.metrics
+from sklearn.metrics import average_precision_score
+from sklearn import metrics
+from sklearn.metrics import precision_recall_curve
 import seaborn as sns
 import torch
 import pandas as pd
 from os import path
+import matplotlib.pyplot as plt
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -176,8 +180,20 @@ def compute_auc(pos_score, neg_score):
     labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).numpy()
 
     auc = sklearn.metrics.roc_auc_score(labels, scores)
+    prc = average_precision_score(labels, scores)
 
-    return auc
+    # save curves
+    fpr, tpr, _ = metrics.roc_curve(labels, scores)
+    auc_plt = plt.plot(fpr, tpr)
+    plt.show()
+    #auc_plt.savefig('auc_fig.png')
+
+    pr, re, _ = precision_recall_curve(labels, scores)
+    prc_plt = plt.plot(pr, re)
+    plt.show()
+    #prc_plt.savefig('prc_fig.png')
+
+    return auc, prc
 
 ######################################################################################
 # TRAINING OF MODEL
@@ -232,7 +248,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
     ################# Train model #########################################
     opt = torch.optim.Adam(model.parameters())  # optimization algorithm we want to use
 
-    print('Running epochs...')
+    print('...Running epochs')
 
     # where we will be storing our loss
     all_loss = []
@@ -274,7 +290,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
             if (it + 1) == 1000:
                 break
 
-        print("Epoch {:05d} | Loss {:.4f}".format(epoch, total_loss / (it + 1)))
+        print("     Epoch {:05d} | Loss {:.4f}".format(epoch, total_loss / (it + 1)))
 
     return all_loss
 
@@ -305,7 +321,8 @@ def testing(positive_test_graph, negative_test_graph, c_lp_etype, model):
         pos_score, neg_score = model(positive_test_graph, negative_test_graph, sm_node_features, c_lp_etype)    
     
         # print AUC
-        print('Link Prediction AUC on test set:', compute_auc(pos_score, neg_score))
+        print('     Link Prediction AUC on test set:', compute_auc(pos_score, neg_score)[0])
+        print('     Link Prediction PRC on test set:', compute_auc(pos_score, neg_score)[1])
 
     return pos_score, neg_score
 
