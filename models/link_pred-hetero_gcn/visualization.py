@@ -33,7 +33,7 @@ from dgl.dataloading import (
 DEVICE = 'cpu'
 
 ######################################################################################
-# PREDICTION USING MODEL
+# VISUALIZATION USING NETWORKX
 ######################################################################################
 def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype):
     '''
@@ -127,6 +127,35 @@ def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, 
 
     return G
 
+######################################################################################
+# DISTRIBUTION OF SCORES
+######################################################################################
+def dist_scores(pos_scores, neg_scores):
+    '''
+    Get distribution of scores by edge type (positive or negative).
+
+    Parameters
+    ----------
+    pos_scores : positive scores
+    neg_scores : negative scores
+
+    Outputs
+    ----------
+    dist : distribution as sns plot
+    '''
+    # put scores in the same dataframe
+    all_scores = pos_scores.squeeze().tolist() + neg_scores.squeeze().tolist() 
+    etype = ['positive'] * len(pos_scores.squeeze().tolist()) + ['negative'] * len(neg_scores.squeeze().tolist()) # get the edge type
+
+    # to dataframe
+    dict = {'score': all_scores, 'etype': etype}
+    df = pd.DataFrame(dict)
+
+    # plot
+    dist = sns.displot(data = df, hue = 'etype', x = 'score', discrete = True)
+
+    return dist
+
 if __name__=="__main__":
     ######################################################################################
     # INITIALIZATION OF ARGUMENTS
@@ -165,7 +194,6 @@ if __name__=="__main__":
     ######################################################################################
     # VISUALIZATION 
     ######################################################################################
-    print("Making visualization...")
     # set edge type for link prediction
     lp_etype = args.edge_type
 
@@ -173,6 +201,13 @@ if __name__=="__main__":
     pos_scores = torch.load(args.pos_file)
     neg_scores = torch.load(args.neg_file)
 
+    print('Getting score distribution...')
+    # get distribution 
+    dist = dist_scores(pos_scores, neg_scores)
+    dist_fig = dist.figure
+    dist_fig.savefig('dist_fig.png')
+
+    print("Making visualization...")
     # get positive_test_graph
     positive_test_graph = dgl.load_graphs(args.graph_file)[0][0]
 
@@ -194,6 +229,5 @@ if __name__=="__main__":
     ncolors = nx.get_node_attributes(G, 'ncolor').values() # color of nodes based on node type (chemical or disease)
 
     nx.draw(G, position, node_color = ncolors, edge_color = ecolors, width = list(weights))
-
     plt.show()
 
