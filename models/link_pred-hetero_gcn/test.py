@@ -13,6 +13,7 @@ import dgl.function as fn
 import dgl.nn as dglnn
 
 import pickle
+from sklearn.metrics import precision_score
 import numpy as np
 import sklearn.metrics
 from sklearn.metrics import average_precision_score
@@ -139,11 +140,11 @@ def construct_negative_graph(graph, k):
     return m_neg_graph
 
 ######################################################################################
-# COMPUTE LOSS
+# COMPUTE HINGE LOSS
 ######################################################################################
-def compute_loss(pos_score, neg_score):
+def compute_hinge_loss(pos_score, neg_score):
     '''
-     Get scores for positive and negative graph.
+    Get scores for positive and negative graph.
 
     Parameters
     ----------
@@ -161,11 +162,34 @@ def compute_loss(pos_score, neg_score):
     return hinge_loss
 
 ######################################################################################
+# COMPUTE BINARY CROSS ENTROPY LOSS
+######################################################################################
+def compute_bce_loss(pos_score, neg_score):
+    '''
+    Get scores for positive and negative graph.
+
+    Parameters
+    ----------
+    pos_score : scores for each edge in positive graph (each edge of our edge type of course)
+    neg_score : scores for each edge in negative graph
+
+    Outputs
+    ----------
+    bce_loss : binary cross entropy loss that compares score between nodes connected by an edge in positive graph against score between nodes connected by an edge in negative graph
+    '''
+    scores = torch.cat([pos_score, neg_score]).squeeze()
+    labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).squeeze()
+
+    bce_loss = F.binary_cross_entropy_with_logits(scores, labels)
+
+    return bce_loss
+
+######################################################################################
 # COMPUTE AUC
 ######################################################################################
-def compute_auc(pos_score, neg_score):
+def evaluate(pos_score, neg_score):
     '''
-    Compute AUC.
+    Compute various evaluation metrics.
 
     Parameters
     ----------
@@ -175,25 +199,39 @@ def compute_auc(pos_score, neg_score):
     Outputs
     ----------
     auc : AUC
+    acc : accuracy
+    fpr : false positive rate
+    tpr : true positive rate 
+    pr : precision (PPV)
     '''
-    scores = torch.cat([pos_score, neg_score]).numpy()
-    labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).numpy()
 
-    auc = sklearn.metrics.roc_auc_score(labels, scores)
-    prc = average_precision_score(labels, scores)
+    # turn scores into predictions through thresholding (threshold right now is any score above the min pos score is labeled as 1)
+    with torch.no_grad():
+        scores = torch.cat([pos_score, neg_score]).squeeze().numpy()
+        pred_labels = np.zeros((scores.shape[0]))
+        pred_labels[scores > np.min(pos_score.squeeze().numpy())] = 1
 
-    # save curves
-    fpr, tpr, _ = metrics.roc_curve(labels, scores)
-    auc_plt = plt.plot(fpr, tpr)
-    plt.show()
-    #auc_plt.savefig('auc_fig.png')
+        # get true labels
+        labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).squeeze().numpy() # labels
 
-    pr, re, _ = precision_recall_curve(labels, scores)
-    prc_plt = plt.plot(pr, re)
-    plt.show()
-    #prc_plt.savefig('prc_fig.png')
+        # computes how often the predicted score indices are the same as the correct score labels
+        correct = (pred_labels == labels).sum()
 
-    return auc, prc
+        # compute metrics 
+        acc = correct / len(labels)
+        auc = sklearn.metrics.roc_auc_score(labels, pred_labels)
+        fpr, tpr, _ = metrics.roc_curve(labels, pred_labels)
+        pr = precision_score(labels, pred_labels)
+
+        # save as dataframe
+        data = {'scores': scores,
+            'label': labels,
+            'pred_label': pred_labels}
+  
+        prediction_df = pd.DataFrame(data)
+        prediction_df.to_csv("/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/scores_labels.csv", index=False)
+
+        return auc, acc, fpr, tpr, pr
 
 ######################################################################################
 # TRAINING OF MODEL
@@ -248,7 +286,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
     ################# Train model #########################################
     opt = torch.optim.Adam(model.parameters())  # optimization algorithm we want to use
 
-    print('...Running epochs')
+    print('     Running epochs...')
 
     # where we will be storing our loss
     all_loss = []
@@ -276,7 +314,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
             pos_score, neg_score = model(positive_graph, negative_graph, sm_node_features, c_lp_etype)
 
             # compute loss
-            loss = compute_loss(pos_score, neg_score)
+            loss = compute_bce_loss(pos_score, neg_score)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -318,11 +356,20 @@ def testing(positive_test_graph, negative_test_graph, c_lp_etype, model):
 
     # get scores and AUC for test graph
     with torch.no_grad():   
-        pos_score, neg_score = model(positive_test_graph, negative_test_graph, sm_node_features, c_lp_etype)    
+        print('     Getting score on test graph...')
+        pos_score, neg_score = model(positive_test_graph, negative_test_graph, sm_node_features, c_lp_etype)
+
+        print('     Calculating evaluation metrics...')
+        auc, acc, fpr, tpr, pr = evaluate(pos_score, neg_score)
+        print("     - Test accuracy: {:.4f}".format(acc))    
     
         # print AUC
-        print('     Link Prediction AUC on test set:', compute_auc(pos_score, neg_score)[0])
-        print('     Link Prediction PRC on test set:', compute_auc(pos_score, neg_score)[1])
+        print('     - Link Prediction AUC on test set:', auc)
+        print('     - Link Prediction PPV on test set:', pr)
+
+        # print curves 
+        auc_plt = plt.plot(fpr, tpr)
+        plt.show()
 
     return pos_score, neg_score
 
@@ -382,7 +429,7 @@ if __name__=="__main__":
 
     print('Making model...')
     # not sure which graph to put here? G? train_g?
-    model = Model(edge_input_sizes, 20, 5, train_g.etypes) # check this
+    model = Model(edge_input_sizes, 20, 2, train_g.etypes) # check this actually i dont think it really matters since all the graphs have the same etype
 
     ######################################################################################
     # TRAIN MODEL 
@@ -391,9 +438,9 @@ if __name__=="__main__":
     loss_array = training(device, train_g, model, train_eid_dict, reverse_edges, c_lp_etype)
 
     print("Making loss graph...")
-    loss_plt = sns.lineplot(data = loss_array)
-    loss_fig = loss_plt.figure
-    loss_fig.savefig('loss_fig.png')
+    #loss_plt = sns.lineplot(data = loss_array)
+    #loss_fig = loss_plt.figure
+    #loss_fig.savefig('loss_fig.png')
 
     ######################################################################################
     # TEST MODEL 
@@ -402,4 +449,4 @@ if __name__=="__main__":
     positive_test_graph = test_g
     negative_test_graph = construct_negative_graph(test_g, 5)
 
-    test_pos_score, test_neg_score = testing(positive_test_graph, negative_test_graph, c_lp_etype, model)
+    testing(positive_test_graph, negative_test_graph, c_lp_etype, model)

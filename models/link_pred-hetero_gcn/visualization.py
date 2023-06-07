@@ -86,9 +86,6 @@ def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, 
 
         neg_edge_tuples.append(new_element)
 
-    # threshold edges
-    neg_edge_tuples_threshold = [ x for x in neg_edge_tuples if (x[2]['weight'] >= 3.0) ]
-
     # make positive edge tuples
     pos_edge_tuples = []
     src_ID_pos = src_1D_pos.squeeze().tolist()
@@ -108,8 +105,8 @@ def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, 
     #neg_edge_tuples = [ x for x in neg_edge_tuples if (x[2]['weight'] >= 6) ]
     #pos_edge_tuples = [ x for x in pos_edge_tuples if (x[2]['weight'] >= 6) ]
 
-    pos_edge_tuples = pos_edge_tuples[30:100]
-    neg_edge_tuples = neg_edge_tuples[30:100]
+    pos_edge_tuples = pos_edge_tuples[0:100]
+    neg_edge_tuples = neg_edge_tuples[0:100]
 
     # add edges to networkx graph with weights and edge type as attributes
     G = nx.Graph()
@@ -203,9 +200,9 @@ if __name__=="__main__":
 
     print('Getting score distribution...')
     # get distribution 
-    dist = dist_scores(pos_scores, neg_scores)
-    dist_fig = dist.figure
-    dist_fig.savefig('dist_fig.png')
+    #dist = dist_scores(pos_scores, neg_scores)
+    #dist_fig = dist.figure
+    #dist_fig.savefig('dist_fig.png')
 
     print("Making visualization...")
     # get positive_test_graph
