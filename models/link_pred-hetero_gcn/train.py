@@ -103,7 +103,7 @@ def construct_negative_graph(graph, k):
 ######################################################################################
 # COMPUTE LOSS
 ######################################################################################
-def compute_loss(pos_score, neg_score):
+def compute_hinge_loss(pos_score, neg_score):
     '''
      Get scores for positive and negative graph.
 
@@ -121,6 +121,29 @@ def compute_loss(pos_score, neg_score):
     hinge_loss = (neg_score.view(n, -1) - pos_score.view(n, -1) + 1).clamp(min=0).mean()
 
     return hinge_loss
+
+######################################################################################
+# COMPUTE BINARY CROSS ENTROPY LOSS
+######################################################################################
+def compute_bce_loss(pos_score, neg_score):
+    '''
+    Get scores for positive and negative graph.
+
+    Parameters
+    ----------
+    pos_score : scores for each edge in positive graph (each edge of our edge type of course)
+    neg_score : scores for each edge in negative graph
+
+    Outputs
+    ----------
+    bce_loss : binary cross entropy loss that compares score between nodes connected by an edge in positive graph against score between nodes connected by an edge in negative graph
+    '''
+    scores = torch.cat([pos_score, neg_score]).squeeze()
+    labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).squeeze()
+
+    bce_loss = F.binary_cross_entropy_with_logits(scores, labels)
+
+    return bce_loss
 
 ######################################################################################
 # TRAINING OF MODEL
@@ -203,7 +226,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
             pos_score, neg_score = model(positive_graph, negative_graph, sm_node_features, c_lp_etype)
 
             # compute loss
-            loss = compute_loss(pos_score, neg_score)
+            loss = compute_bce_loss(pos_score, neg_score)
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -274,7 +297,7 @@ if __name__=="__main__":
     train_eid_dict = {etype: G.edges(etype = etype, form = 'eid') for etype in G.canonical_etypes}
 
     print('Making model...')
-    model = Model(edge_input_sizes, 20, 5, G.etypes)
+    model = Model(edge_input_sizes, 20, 2, G.etypes)
 
     ######################################################################################
     # TRAIN MODEL 
