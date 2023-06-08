@@ -1,9 +1,12 @@
 #!/usr/bin/python3
 
-######################################################################################
+################################################################################################################
 # README!
 # Code to get predictions from trained link prediction model.
-######################################################################################
+
+# FILE OUTPUT:
+# - predicted_neg_edges.csv : negative edges (src and dst) w/ scores predicted to exist based on our threshold 
+################################################################################################################
 import argparse
 
 import dgl
@@ -46,7 +49,7 @@ def predict(pos_scores, neg_scores, negative_test_graph, lp_etype):
 
     Outputs
     ----------
-    prediction_df : dataframes of src,dst nodes of edges that are predicted to exist
+    predictions_df : dataframe of src,dst nodes of negative edges that are predicted to exist
     '''
     # we choose which neg_scores to keep based on a threshold made from the pos_scores
     # make threshold
@@ -78,9 +81,9 @@ def predict(pos_scores, neg_scores, negative_test_graph, lp_etype):
         'dst': dst_nodes_pred, 
         'pred_score': neg_scores[neg_idx]}
   
-    prediction_df = pd.DataFrame(data)
+    predictions_df = pd.DataFrame(data)
 
-    return prediction_df
+    return predictions_df
 
 if __name__=="__main__":
     ######################################################################################
@@ -105,7 +108,7 @@ if __name__=="__main__":
                         help = "Edge type to make link predictions on.")
     
     # give location where to save csv
-    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/edges_w_scores.csv",
+    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/predicted_neg_edges.csv",
                         help = "File path where to save the csv files.")
 
     # not sure what this does
@@ -128,11 +131,11 @@ if __name__=="__main__":
     negative_test_graph = dgl.load_graphs(args.ngraph_file)[0][0]
 
     # predictions
-    prediction_df = predict(pos_scores, neg_scores, negative_test_graph, lp_etype)
+    predictions_df = predict(pos_scores, neg_scores, negative_test_graph, lp_etype)
 
     # save 
-    prediction_df.to_csv(args.file_path, index=False)
+    predictions_df.to_csv(args.file_path, index=False)
 
     # print a handful of the predicitons
-    df_first_10 = prediction_df.head(10)
+    df_first_10 = predictions_df.head(10)
     print(df_first_10)

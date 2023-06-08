@@ -2,7 +2,12 @@
 
 ######################################################################################
 # README!
-# Code to get visualize predictions from trained link prediction model.
+# Code to visualize predicted scores from trained link prediction model.
+
+# FILE OUTPUT:
+# - pred_labels_for_all_edges : scores for all edges with predicted label and true label (used for evaluation of model)
+# - loss_fig.png : model loss figure
+# - auc_plt.png : auc curve for model
 ######################################################################################
 import argparse
 
@@ -35,9 +40,9 @@ DEVICE = 'cpu'
 ######################################################################################
 # VISUALIZATION USING NETWORKX
 ######################################################################################
-def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype):
+def nx_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype):
     '''
-    Predict new edges.
+    Make networkx graph for visualization.
 
     Parameters
     ----------
@@ -105,8 +110,9 @@ def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, 
     #neg_edge_tuples = [ x for x in neg_edge_tuples if (x[2]['weight'] >= 6) ]
     #pos_edge_tuples = [ x for x in pos_edge_tuples if (x[2]['weight'] >= 6) ]
 
-    pos_edge_tuples = pos_edge_tuples[0:100]
-    neg_edge_tuples = neg_edge_tuples[0:100]
+    # only look at a couple edges
+    #pos_edge_tuples = pos_edge_tuples[0:100]
+    #neg_edge_tuples = neg_edge_tuples[0:100]
 
     # add edges to networkx graph with weights and edge type as attributes
     G = nx.Graph()
@@ -125,6 +131,66 @@ def visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, 
     return G
 
 ######################################################################################
+# VISUALIZATION USING GEPHI
+######################################################################################
+def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype):
+    '''
+    Make dataframe for gephi visualization.
+
+    Parameters
+    ----------
+    pos_scores : positive scores
+    neg_scores : negative scores
+    positive_test_graph : positive test graph
+    negative_test_graph : negative test graph
+    lp_etype : edge we want predictions on 
+
+    Outputs
+    ----------
+    gephi_edges_df : dataframe of edges for gephi
+    '''
+    # we find the source and destination nodes for each edge in negative and positive graph
+    src_neg = negative_test_graph.edges(etype = lp_etype)[0]
+    dst_neg = negative_test_graph.edges(etype = lp_etype)[1]
+
+    src_pos = positive_test_graph.edges(etype = lp_etype)[0]
+    dst_pos = positive_test_graph.edges(etype = lp_etype)[1]
+
+    # need to fix the shapes
+    src_1D_neg = torch.empty(src_neg.size(0), 1)
+    dst_1D_neg = torch.empty(dst_neg.size(0), 1)
+
+    src_1D_neg[:,0] = src_neg
+    dst_1D_neg[:,0] = dst_neg
+
+    src_1D_pos = torch.empty(src_pos.size(0), 1)
+    dst_1D_pos = torch.empty(dst_pos.size(0), 1)
+
+    src_1D_pos[:,0] = src_pos
+    dst_1D_pos[:,0] = dst_pos
+
+    # make dataframe for gephi
+    data_neg = {'src': src_1D_neg.squeeze().tolist(),
+        'dst': dst_1D_neg.squeeze().tolist(), 
+        'relationship': 'chemicalassociateswithdisease',
+        'weight': neg_scores.squeeze().tolist(), 
+        'label': 'negative'}
+  
+    neg_edges_df = pd.DataFrame(data_neg)
+    
+    data_pos = {'src': src_1D_pos.squeeze().tolist(),
+        'dst': dst_1D_pos.squeeze().tolist(), 
+        'relationship': 'chemicalassociateswithdisease',
+        'weight': pos_scores.squeeze().tolist(),
+        'label': 'positive'}
+  
+    pos_edges_df = pd.DataFrame(data_pos)
+
+    gephi_edges_df = pd.concat([neg_edges_df, pos_edges_df])
+
+    return gephi_edges_df
+
+######################################################################################
 # DISTRIBUTION OF SCORES
 ######################################################################################
 def dist_scores(pos_scores, neg_scores):
@@ -141,15 +207,15 @@ def dist_scores(pos_scores, neg_scores):
     dist : distribution as sns plot
     '''
     # put scores in the same dataframe
-    all_scores = pos_scores.squeeze().tolist() + neg_scores.squeeze().tolist() 
-    etype = ['positive'] * len(pos_scores.squeeze().tolist()) + ['negative'] * len(neg_scores.squeeze().tolist()) # get the edge type
+    all_scores = pos_scores.squeeze().tolist() + neg_scores.squeeze().tolist()
+    e_attr = ['positive'] * len(pos_scores.squeeze().tolist()) + ['negative'] * len(neg_scores.squeeze().tolist()) # get the edge attribute
 
     # to dataframe
-    dict = {'score': all_scores, 'etype': etype}
-    df = pd.DataFrame(dict)
+    all_scores_dict = {'score': all_scores, 'etype': e_attr}
+    scores_w_attr = pd.DataFrame(all_scores_dict)
 
     # plot
-    dist = sns.displot(data = df, hue = 'etype', x = 'score', discrete = True)
+    dist = sns.displot(data = scores_w_attr, hue = 'etype', x = 'score', discrete = True)
 
     return dist
 
@@ -180,7 +246,7 @@ if __name__=="__main__":
                         help = "Edge type to make link predictions on.")
     
     # give location where to save csv
-    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/",
+    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/gephi_nodes.csv",
                         help = "File path where to save the csv files.")
 
     # not sure what this does
@@ -200,9 +266,9 @@ if __name__=="__main__":
 
     print('Getting score distribution...')
     # get distribution 
-    #dist = dist_scores(pos_scores, neg_scores)
-    #dist_fig = dist.figure
-    #dist_fig.savefig('dist_fig.png')
+    dist = dist_scores(pos_scores, neg_scores)
+    dist_fig = dist.figure
+    dist_fig.savefig('dist_fig.png')
 
     print("Making visualization...")
     # get positive_test_graph
@@ -212,14 +278,9 @@ if __name__=="__main__":
     negative_test_graph = dgl.load_graphs(args.ngraph_file)[0][0]
 
     # networkx graph
-    G = visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
-
-    # save scores
-    scores = nx.get_edge_attributes(G, 'weight').values()
-    scores_df = pd.DataFrame(scores)
-    scores_df.to_csv(args.file_path + 'graph_scores.csv', index=False)
-
-    # plot 
+    G = nx_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
+    
+    # plot networkx graph
     position = nx.spring_layout(G, k = 0.4) # layout of nodes can change k to change node positions
     ecolors = nx.get_edge_attributes(G, 'color').values() # color of edges based on edge type (postive or negative)
     weights = nx.get_edge_attributes(G, 'weight').values() # width of edges based on scores
@@ -227,4 +288,8 @@ if __name__=="__main__":
 
     nx.draw(G, position, node_color = ncolors, edge_color = ecolors, width = list(weights))
     plt.show()
+
+    # gephi
+    gephi_csv = gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
+    gephi_csv.to_csv(args.file_path, index=False)
 

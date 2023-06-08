@@ -9,6 +9,12 @@
 # - 4 node types
 # - 14 edge types
 # - predictions are made on one edge type: CHEMICALASSOCIATESWITHDISEASE
+
+# FILE OUTPUT:
+# - ngraph.bin : negative graph
+# - loss_fig.png : model loss figure
+# - pos_scores.pt : positive scores predicted by model
+# - neg_scores.pt : positive scores predicted by model
 ######################################################################################
 
 import argparse
@@ -285,7 +291,6 @@ if __name__=="__main__":
     G = dgl.load_graphs(args.graph_file)[0][0]
     G = G.to("cpu")
 
-
     print('Getting reverse IDs...')
     with open(args.edge_file, 'rb') as f:
         reverse_edges = pickle.load(f)
@@ -311,8 +316,9 @@ if __name__=="__main__":
     loss_fig.savefig('loss_fig.png')
 
     print('Saving data for prediction...')
-    # save negative graph for prediction taks
-    negative_test_graph = construct_negative_graph(G, 5)
+
+    # save negative graph for prediction
+    negative_test_graph = construct_negative_graph(G, 2)
 
     output_filename = path.join("data", "ngraph.bin")
     save_graphs(output_filename, negative_test_graph)
@@ -323,5 +329,5 @@ if __name__=="__main__":
         pos_score, neg_score = model(G, negative_test_graph, node_features, c_lp_etype)
     
         # save tensor 
-        torch.save(pos_score, 'pos_score.pt')
-        torch.save(neg_score, 'neg_score.pt')
+        torch.save(pos_score, 'pos_scores.pt')
+        torch.save(neg_score, 'neg_scores.pt')

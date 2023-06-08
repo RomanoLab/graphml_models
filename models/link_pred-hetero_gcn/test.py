@@ -1,9 +1,14 @@
 #!/usr/bin/python3
 
-######################################################################################
+########################################################################################################################
 # README!
 # Code to train and test a link prediction on heterogenous graph.
-######################################################################################
+
+# FILE OUTPUT:
+# - pred_labels_for_all_edges : scores for all edges with predicted label and true label (used for evaluation of model)
+# - loss_fig.png : model loss figure
+# - auc_plt.png : auc curve for model
+########################################################################################################################
 
 import argparse
 
@@ -228,8 +233,8 @@ def evaluate(pos_score, neg_score):
             'label': labels,
             'pred_label': pred_labels}
   
-        prediction_df = pd.DataFrame(data)
-        prediction_df.to_csv("/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/scores_labels.csv", index=False)
+        scores_df = pd.DataFrame(data)
+        scores_df.to_csv(args.file_path, index=False)
 
         return auc, acc, fpr, tpr, pr
 
@@ -308,7 +313,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
             input_features = blocks[0].srcdata['features']
  
             # preprocess the graph
-            sm_node_features, sm_node_sizes, sm_edge_input_sizes = preprocess_edges(positive_graph)
+            sm_node_features, _, _ = preprocess_edges(positive_graph)
 
             # get scores from model
             pos_score, neg_score = model(positive_graph, negative_graph, sm_node_features, c_lp_etype)
@@ -352,7 +357,7 @@ def testing(positive_test_graph, negative_test_graph, c_lp_etype, model):
     neg_score: scores on negative edges in test graph
     '''
     # preprocess the graph
-    sm_node_features, sm_node_sizes, sm_edge_input_sizes = preprocess_edges(positive_test_graph)
+    sm_node_features, _, _ = preprocess_edges(positive_test_graph)
 
     # get scores and AUC for test graph
     with torch.no_grad():   
@@ -367,7 +372,7 @@ def testing(positive_test_graph, negative_test_graph, c_lp_etype, model):
         print('     - Link Prediction AUC on test set:', auc)
         print('     - Link Prediction PPV on test set:', pr)
 
-        # print curves 
+        # print curves (figure out how to save them)
         auc_plt = plt.plot(fpr, tpr)
         plt.show()
 
@@ -393,6 +398,10 @@ if __name__=="__main__":
     
     parser.add_argument("--cedge-type", type = str, default = ('chemical', 'chemicalassociateswithdisease', 'disease'),
                         help = "Canonical edge type to make link predictions on.")
+    
+    # give location where to save csv
+    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/pred_labels_for_all_edges.csv",
+                        help = "File path where to save the csv files.")
 
     # not sure what this does
     parser.set_defaults(validation = True) # not sure what this does
@@ -428,8 +437,7 @@ if __name__=="__main__":
     train_eid_dict = {etype: train_g.edges(etype = etype, form = 'eid') for etype in train_g.canonical_etypes}
 
     print('Making model...')
-    # not sure which graph to put here? G? train_g?
-    model = Model(edge_input_sizes, 20, 2, train_g.etypes) # check this actually i dont think it really matters since all the graphs have the same etype
+    model = Model(edge_input_sizes, 20, 2, train_g.etypes)
 
     ######################################################################################
     # TRAIN MODEL 
@@ -447,6 +455,6 @@ if __name__=="__main__":
     ######################################################################################
     print("Testing...")
     positive_test_graph = test_g
-    negative_test_graph = construct_negative_graph(test_g, 5)
+    negative_test_graph = construct_negative_graph(test_g, 2)
 
     testing(positive_test_graph, negative_test_graph, c_lp_etype, model)
