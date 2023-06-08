@@ -148,6 +148,7 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
     Outputs
     ----------
     gephi_edges_df : dataframe of edges for gephi
+    gephi_nodes_df : dataframe of nodes for gephi
     '''
     # we find the source and destination nodes for each edge in negative and positive graph
     src_neg = negative_test_graph.edges(etype = lp_etype)[0]
@@ -169,26 +170,36 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
     src_1D_pos[:,0] = src_pos
     dst_1D_pos[:,0] = dst_pos
 
-    # make dataframe for gephi
-    data_neg = {'src': src_1D_neg.squeeze().tolist(),
-        'dst': dst_1D_neg.squeeze().tolist(), 
-        'relationship': 'chemicalassociateswithdisease',
-        'weight': neg_scores.squeeze().tolist(), 
-        'label': 'negative'}
+    # make edge dataframe for gephi
+    data_neg_edge = {'Source': src_1D_neg.squeeze().tolist(),
+        'Target': dst_1D_neg.squeeze().tolist(), 
+        'Relationship': 'chemicalassociateswithdisease',
+        'Weight': neg_scores.squeeze().tolist(), 
+        'etype': 'negative'}
   
-    neg_edges_df = pd.DataFrame(data_neg)
+    neg_edges_df = pd.DataFrame(data_neg_edge)
     
-    data_pos = {'src': src_1D_pos.squeeze().tolist(),
-        'dst': dst_1D_pos.squeeze().tolist(), 
-        'relationship': 'chemicalassociateswithdisease',
-        'weight': pos_scores.squeeze().tolist(),
-        'label': 'positive'}
+    data_pos_edge = {'Source': src_1D_pos.squeeze().tolist(),
+        'Target': dst_1D_pos.squeeze().tolist(), 
+        'Relationship': 'chemicalassociateswithdisease',
+        'Weight': pos_scores.squeeze().tolist(),
+        'etype': 'positive'}
   
-    pos_edges_df = pd.DataFrame(data_pos)
+    pos_edges_df = pd.DataFrame(data_pos_edge)
 
     gephi_edges_df = pd.concat([neg_edges_df, pos_edges_df])
 
-    return gephi_edges_df
+    # make node dataframe for gephi
+    all_nodes = src_1D_neg.squeeze().tolist() + dst_1D_neg.squeeze().tolist()
+    node_labels = ['chemical'] * len(src_1D_neg.squeeze().tolist()) + ['disease'] * len(dst_1D_neg.squeeze().tolist())
+
+    nodes_data = {'ID': all_nodes,
+        'label': node_labels, 
+        'ntype': node_labels}
+    
+    gephi_nodes_df = pd.DataFrame(nodes_data)
+
+    return gephi_edges_df, gephi_nodes_df
 
 ######################################################################################
 # DISTRIBUTION OF SCORES
@@ -246,7 +257,7 @@ if __name__=="__main__":
                         help = "Edge type to make link predictions on.")
     
     # give location where to save csv
-    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/gephi_nodes.csv",
+    parser.add_argument("--file-path", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/data/",
                         help = "File path where to save the csv files.")
 
     # not sure what this does
@@ -266,9 +277,9 @@ if __name__=="__main__":
 
     print('Getting score distribution...')
     # get distribution 
-    dist = dist_scores(pos_scores, neg_scores)
-    dist_fig = dist.figure
-    dist_fig.savefig('dist_fig.png')
+    #dist = dist_scores(pos_scores, neg_scores)
+    #dist_fig = dist.figure
+    #dist_fig.savefig('dist_fig.png')
 
     print("Making visualization...")
     # get positive_test_graph
@@ -278,18 +289,19 @@ if __name__=="__main__":
     negative_test_graph = dgl.load_graphs(args.ngraph_file)[0][0]
 
     # networkx graph
-    G = nx_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
+    #G = nx_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
     
     # plot networkx graph
-    position = nx.spring_layout(G, k = 0.4) # layout of nodes can change k to change node positions
-    ecolors = nx.get_edge_attributes(G, 'color').values() # color of edges based on edge type (postive or negative)
-    weights = nx.get_edge_attributes(G, 'weight').values() # width of edges based on scores
-    ncolors = nx.get_node_attributes(G, 'ncolor').values() # color of nodes based on node type (chemical or disease)
+    #position = nx.spring_layout(G, k = 0.4) # layout of nodes can change k to change node positions
+    #ecolors = nx.get_edge_attributes(G, 'color').values() # color of edges based on edge type (postive or negative)
+    #weights = nx.get_edge_attributes(G, 'weight').values() # width of edges based on scores
+    #ncolors = nx.get_node_attributes(G, 'ncolor').values() # color of nodes based on node type (chemical or disease)
 
-    nx.draw(G, position, node_color = ncolors, edge_color = ecolors, width = list(weights))
-    plt.show()
+    #nx.draw(G, position, node_color = ncolors, edge_color = ecolors, width = list(weights))
+    #plt.show()
 
     # gephi
-    gephi_csv = gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
-    gephi_csv.to_csv(args.file_path, index=False)
+    gephi_edge_csv, gephi_node_csv = gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_graph, lp_etype)
+    gephi_edge_csv.to_csv(args.file_path + 'gephi_edges.csv', index=False)
+    gephi_node_csv.to_csv(args.file_path + 'gephi_nodes.csv', index=False)
 
