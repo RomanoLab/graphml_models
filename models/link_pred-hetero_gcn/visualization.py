@@ -147,8 +147,8 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
 
     Outputs
     ----------
-    gephi_edges_df : dataframe of edges for gephi
-    gephi_nodes_df : dataframe of nodes for gephi
+    gephi_edges_df_w0_0 : dataframe of edges for gephi (edges with score 0 are dropped)
+    gephi_nodes_df_uni : dataframe of nodes for gephi
     '''
     # we find the source and destination nodes for each edge in negative and positive graph
     src_neg = negative_test_graph.edges(etype = lp_etype)[0]
@@ -175,6 +175,7 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
         'Target': dst_1D_neg.squeeze().tolist(), 
         'Relationship': 'chemicalassociateswithdisease',
         'Weight': neg_scores.squeeze().tolist(), 
+        'Label': 'negative',
         'etype': 'negative'}
   
     neg_edges_df = pd.DataFrame(data_neg_edge)
@@ -183,11 +184,14 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
         'Target': dst_1D_pos.squeeze().tolist(), 
         'Relationship': 'chemicalassociateswithdisease',
         'Weight': pos_scores.squeeze().tolist(),
+        'Label': 'positive',
         'etype': 'positive'}
   
     pos_edges_df = pd.DataFrame(data_pos_edge)
 
-    gephi_edges_df = pd.concat([neg_edges_df, pos_edges_df])
+    gephi_edges_df = pd.concat([neg_edges_df, pos_edges_df]) # put pos and neg dataframes together
+
+    gephi_edges_df_w0_0 = gephi_edges_df[gephi_edges_df.Weight != 0] # drop scores with weight = 0
 
     # make node dataframe for gephi
     all_nodes = src_1D_neg.squeeze().tolist() + dst_1D_neg.squeeze().tolist()
@@ -199,7 +203,9 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
     
     gephi_nodes_df = pd.DataFrame(nodes_data)
 
-    return gephi_edges_df, gephi_nodes_df
+    gephi_nodes_df_uni = gephi_nodes_df.drop_duplicates() # drop duplicate nodes
+
+    return gephi_edges_df_w0_0, gephi_nodes_df_uni
 
 ######################################################################################
 # DISTRIBUTION OF SCORES

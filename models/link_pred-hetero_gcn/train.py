@@ -210,7 +210,7 @@ def training(device, graph, model, train_eid_dict, reverse_edges, c_lp_etype):
     all_loss = []
 
     # iterates over data loader and feeds in the small graphs + input features to the model defined above
-    for epoch in range(1):
+    for epoch in range(10):
         model.train()
         total_loss = 0
 
