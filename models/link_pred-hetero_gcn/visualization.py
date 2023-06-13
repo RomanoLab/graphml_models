@@ -5,9 +5,8 @@
 # Code to visualize predicted scores from trained link prediction model.
 
 # FILE OUTPUT:
-# - pred_labels_for_all_edges : scores for all edges with predicted label and true label (used for evaluation of model)
-# - loss_fig.png : model loss figure
-# - auc_plt.png : auc curve for model
+# - gephi_edge_csv : edges to make graph in gephi
+# - gephi_node_csv : nodes to make graph in gephi
 ######################################################################################
 import argparse
 
