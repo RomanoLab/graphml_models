@@ -147,7 +147,7 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
 
     Outputs
     ----------
-    gephi_edges_df_w0_0 : dataframe of edges for gephi (edges with score 0 are dropped)
+    gephi_edges_df_w0_0 : dataframe of edges for gephi
     gephi_nodes_df_uni : dataframe of nodes for gephi
     '''
     # we find the source and destination nodes for each edge in negative and positive graph
@@ -191,7 +191,10 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
 
     gephi_edges_df = pd.concat([neg_edges_df, pos_edges_df]) # put pos and neg dataframes together
 
-    gephi_edges_df_w0_0 = gephi_edges_df[gephi_edges_df.Weight != 0] # drop scores with weight = 0
+    gephi_edges_df_drop_dup = gephi_edges_df.drop_duplicates(subset=['Source', 'Target', 'Label']) # drop duplicate edges
+    gephi_edges_df_drop_par = gephi_edges_df_drop_dup.drop_duplicates(subset=['Source', 'Target'], keep = 'last')  # drop parallel edges
+
+    gephi_edges_df_w0_0 = gephi_edges_df_drop_par[gephi_edges_df_drop_par.Weight != 0] # drop scores with weight = 0
 
     # make node dataframe for gephi
     all_nodes = src_1D_neg.squeeze().tolist() + dst_1D_neg.squeeze().tolist()
@@ -251,11 +254,11 @@ if __name__=="__main__":
                         help = "File location where the DGL negative heterograph is stored.")
     
     # give location of pos_score file
-    parser.add_argument("--pos-file", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/pos_score.pt",
+    parser.add_argument("--pos-file", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/pos_scores.pt",
                         help = "File location where the edge list is stored.")
     
     # give location of neg_score file
-    parser.add_argument("--neg-file", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/neg_score.pt",
+    parser.add_argument("--neg-file", type = str, default = "/Users/cfparis/Desktop/romano_lab/graphml_models/models/link_pred-hetero_gcn/neg_scores.pt",
                         help = "File location where the edge list is stored.")
     
     # give edge type you want to make predictions on 
