@@ -148,6 +148,15 @@ def gephi_visualize(pos_scores, neg_scores, positive_test_graph, negative_test_g
     ----------
     gephi_edges_df_w0_0 : dataframe of edges for gephi
     gephi_nodes_df_uni : dataframe of nodes for gephi
+
+    Gephi workflow:
+    ----------
+    1. load node csv and edges csv into gephi
+    2. filter graph using giant component and edge weight as a sub filter
+    3. apply layout (Force Atlas 2)
+    4. color nodes based on ntype (chemical/disease)
+    5. size nodes based on degree
+    6. color edges based on etype (positive/negative)
     '''
     # we find the source and destination nodes for each edge in negative and positive graph
     src_neg = negative_test_graph.edges(etype = lp_etype)[0]
