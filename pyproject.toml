@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools"]
+
+[project]
+name = "graphml_models"
+authors = [
+    {name = "Joseph D. Romano, PhD", email = "joseph.romano@pennmedicine.upenn.edu"}
+]
+description = "A gallery of graph machine learning models for heterogeneous graphs."
+requires-python = ">=3.7"
+license = {text = "MIT"}
+dependencies = [
+    "ogb",
+    "torch-geometric >= 1.6.0",
+    "torch-sparse",
+    "torch-scatter",
+    "scikit-learn",
+    "pandas",
+    "numpy"
+]
+dynamic = ["version", "readme"]
+
+[tool.setuptools.dynamic]
+version = {attr = "graphml_models.VERSION"}
+readme = {file = ["README.md"]}
