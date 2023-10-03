@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
 from ogb.linkproppred import Evaluator
 
@@ -79,6 +79,10 @@ class HeteroGCN():
         self.train_triples = split_edge["train"]
         self.valid_triples = split_edge["valid"]
         self.test_triples = split_edge["test"]
+
+        self.train_loader = DataLoader(self.train_triples, batch_size=32, shuffle=True)
+        self.valid_loader = DataLoader(self.valid_triples, batch_size=32, shuffle=False)
+        self.test_loader = DataLoader(self.test_triples, batch_size=32, shuffle=False)
         
         self.nrelation = int(max(self.train_triples['relation']))+1
 
@@ -103,7 +107,7 @@ class HeteroGCN():
     def fit(self):
         print("Training network on biokg...")
 
-        train_dataloader_head = DataLoader()
+        #train_dataloader_head = DataLoader()
 
     def predict(self):
         pass
